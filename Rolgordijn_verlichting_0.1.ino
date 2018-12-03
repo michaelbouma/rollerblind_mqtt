@@ -99,7 +99,7 @@ A1 - SD Detect
 
 #define Nlamps         STRIP_LENGTH * 3                       // Number of lamps, = 3 * STRIP_LENGTH
 
-#define dsStart        59250                   // Read temp once per minute
+#define dsStart        9250                    // Read temp once per minute
 #define dsRead         750                     // time between request and display
 // offsets for storage of values in EEPROM
 #define MacOffset      0                                  // 0    Offset of Mac Address in Eeprom (6 positions)
@@ -168,8 +168,8 @@ OneWire ds(OneWirePin);
 DallasTemperature sensors(&ds);
 
 // Initialize with pin sequence IN1-IN3-IN2-IN4 for using the AccelStepper with 28BYJ-48
-AccelStepper stepper1(FULL4WIRE, motorPin1, motorPin3, motorPin2, motorPin4);
-AccelStepper stepper2(FULL4WIRE, motorPin5, motorPin7, motorPin6, motorPin8);
+AccelStepper stepper1(FULL4WIRE, motorPin1, motorPin3,  motorPin2,  motorPin4);
+AccelStepper stepper2(FULL4WIRE, motorPin5, motorPin7,  motorPin6,  motorPin8);
 AccelStepper stepper3(FULL4WIRE, motorPin9, motorPin11, motorPin10, motorPin12);
 
 AccelStepper* steppers[Nblinds] = {   
@@ -254,24 +254,28 @@ void setup() {
 // ##################################################
 void loop() {
   mqttRun();           // handle MQTT traffic
+  SteppersRun();
   
   blindsRun();         // Read MQTT and control the blinds
+  SteppersRun();
 
   blindsStatus();      // Update the position of the blinds via MQTT
+  SteppersRun();
   
   lightsRun();         // Read MQTT and control the lights
+  SteppersRun();
 
   ds18B20Run();        // Read ds18B20 data and write to MQTT topic
+  SteppersRun();
 
-  statusRun();         // 
+  statusRun();         // Update status to MQTT
+  SteppersRun();
 
-  infraredRun(); 
+  infraredRun();       // Read infrared and act upon received data
+  SteppersRun();
   
-  for(int StepperID = 0; StepperID < Nblinds; StepperID++){    
-    steppers[StepperID]->run();
-  }
   standaloneRun();     // What to do if we run standalone
-  
+  SteppersRun();
 }
 
 

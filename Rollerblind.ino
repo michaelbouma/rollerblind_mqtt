@@ -34,6 +34,15 @@ void blindIrControl(int blindID)
 }
 
 // *********************************************************
+// SteppersRun; Run the processblinds only when needed
+// *********************************************************
+void SteppersRun() 
+{
+  for(int StepperID = 0; StepperID < Nblinds; StepperID++){    
+    steppers[StepperID]->run();
+  }
+}
+// *********************************************************
 // blindsRun; Run the processblinds only when needed
 // *********************************************************
 void blindsRun() 
