@@ -7,19 +7,44 @@
 #include <Ethernet.h>
 #include <elapsedMillis.h>
 #include <PubSubClient.h>
-#include <Adafruit_WS2801.h>
 #include <AccelStepper.h>
 #include <IRLib.h>
 
 //******************************************************
+
+/*
+ * Pins used by the ethernet shield
+ * 
+D2 - Ethernet interrupt (optional with solder bridge "INT")
+D4 - SD SPI CS
+D10 - Ethernet SPI CS
+D11 - Not connected (but should be SPI MOSI)
+D12 - Not connected (but should be SPI MISO)
+D13 - SPI SCK
+A0 - SD Write Protect
+A1 - SD Detect
+
+ * RJ45 connector (ULN2003)
+ * 1 - orange (coil 1)
+ * 2 - 
+ * 3 - 
+ * 4 - blue (coil 4)
+ * 5 - red (common)
+ * 6 - pink (coil 3)
+ * 7 - 
+ * 8 - yellow (coil 2)
+*/
 
 #define FULL4WIRE    4
 
 // pins for WS2801 shield
 #define CKIPIN      8
 #define SDIPIN      9
+#define redPin      11    // RGB LED red pin   (pwm)
+#define greenPin    12    // RGB LED green pin (pwm)
+#define bluePin     7     // RGB LED blue pin  (pwm)
 
-#define resetPin    12
+#define resetPin    5
 // motor pins
 #define motorPin1   30    // IN1 on the ULN2003 driver 1
 #define motorPin2   31    // IN2 on the ULN2003 driver 1
@@ -50,9 +75,13 @@
 #define lightTopic            "/Light/"
 #define lightGroup            "/Lgroup/"
 #define rollerblindTopic      "/Curtain/"
-#define dsTopic               "/Temp/"
 #define rollerblindGroup      "/Cgroup/"
+#define dsTopic               "/Temp/"
+#define controlTopic          "/Command/"
+#define openhabTopic          "openhab/time"
 
+
+#define heartbeat_timeout         61000        // we expect an MQTT message at least every 60 seconds from openhab
 #define initialmqttconnecttimeout 35000        // should be 35000
 #define MQTTDisconnect 5000                    // number of miliseconds between each mqtt reconnect try
 
@@ -70,8 +99,8 @@
 
 #define Nlamps         STRIP_LENGTH * 3                       // Number of lamps, = 3 * STRIP_LENGTH
 
-#define dsStart        9500                    // Read temp once per second
-#define dsRead         500                     // time between request and display
+#define dsStart        59250                   // Read temp once per minute
+#define dsRead         750                     // time between request and display
 // offsets for storage of values in EEPROM
 #define MacOffset      0                                  // 0    Offset of Mac Address in Eeprom (6 positions)
 #define LightOffset    MacOffset + 6                      // 6    Offset of Light settings in Eeprom 
@@ -108,14 +137,16 @@ long strip_colors[STRIP_LENGTH];
 int  lamp_fade[Nlamps];
 int  group_fade[NLgroups];
 int  group_member[NLgroups][Nlamps];
-bool lampToggle = true;
+
+bool lampToggle    = true;
 bool mqttConnected = false;
+bool standalone    = true;
 
 long end_point[Nblinds];
 bool blindStat[Nblinds];
 int  lamp_value[Nlamps];
 
-int  NFullUpdate = fullUpdate;
+int  NFullUpdate   = fullUpdate;
 
 String LightTopic  = "";
 String LgroupTopic = "";
@@ -135,8 +166,6 @@ char buff[43]; // general buffer. char array. Assuming topicroot is max 10 chars
 IRrecv My_Receiver(IRPin); 
 OneWire ds(OneWirePin); 
 DallasTemperature sensors(&ds);
-
-Adafruit_WS2801 strip = Adafruit_WS2801(STRIP_LENGTH, SDIPIN, CKIPIN);
 
 // Initialize with pin sequence IN1-IN3-IN2-IN4 for using the AccelStepper with 28BYJ-48
 AccelStepper stepper1(FULL4WIRE, motorPin1, motorPin3, motorPin2, motorPin4);
@@ -160,6 +189,7 @@ elapsedMillis LightDelayElapsed;
 elapsedMillis dsDelayElapsed;
 elapsedMillis StatusElapsed;
 elapsedMillis MQTTDisconnectElapsed;
+elapsedMillis openhabTimeElapsed;
 
 
 /******************************************/
@@ -172,27 +202,50 @@ void(* resetFunc) (void) = 0; //declare reset function @ address 0
 // ##         System Setup, Only run once          ##
 // ##################################################
 void setup() {
+  Serial.begin(38400);
+  Serial.println("Starting Arduino");
+
+  // pins for the WS2801 shield
+  pinMode(SDIPIN,   OUTPUT);
+  pinMode(CKIPIN,   OUTPUT);
+  // pins for rgb led
+  pinMode(redPin,   OUTPUT);
+  pinMode(greenPin, OUTPUT);
+  pinMode(bluePin,  OUTPUT);
+  // pin for remote reset
   digitalWrite(resetPin, HIGH);
   pinMode(resetPin, OUTPUT);
-  // start the serial library:
+
+  //Clear out the array
+  strip_colors[0] = Color(30,10,10);
+  post_frame();
+
+  setColor(0, 0, 50); // Color blue
+  
   My_Receiver.enableIRIn(); // Start the receiver
 
-  ethernetInit();
+  etherInit();
+  blindsInit();
+  lightsInit();
   
   // Initialize MQTT
   mqttClient.setServer(Ethernet.mqttBrokerIP(),1883);
   mqttClient.setCallback(callback);
+  setColor(0, 0, 50); // Color blue
 
   sensors.begin(); 
   
+  // First subscribe to a topic consisting of this arduino's MAC address
+  // Connect to Broker, give it arduino as the name
   // Connect to the broker  
   if (mqttClient.connect(MQTTName)) 
     MQTTinit();
   else
     Serial.println("No Connection");
 
-  blindsInit();
-  lightsInit();
+  strip_colors[0] = 0;
+  post_frame();
+  
 }
 
 
@@ -200,23 +253,25 @@ void setup() {
 // ##                  Main Loop                   ##
 // ##################################################
 void loop() {
-  mqttRun();
+  mqttRun();           // handle MQTT traffic
   
-  blindsRun();
+  blindsRun();         // Read MQTT and control the blinds
 
-  blindsStatus();
+  blindsStatus();      // Update the position of the blinds via MQTT
   
-  lightsRun(); 
+  lightsRun();         // Read MQTT and control the lights
 
-  dsRun();
+  ds18B20Run();        // Read ds18B20 data and write to MQTT topic
 
-  statusRun();
+  statusRun();         // 
 
   infraredRun(); 
   
   for(int StepperID = 0; StepperID < Nblinds; StepperID++){    
     steppers[StepperID]->run();
   }
+  standaloneRun();     // What to do if we run standalone
+  
 }
 
 

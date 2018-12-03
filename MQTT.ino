@@ -28,30 +28,37 @@ void MQTTinit() {
     // Set up commandtopic
     sprintf(commandtopic, "%s%s", basetopic, statusvector);
     mqttClient.publish(commandtopic, "Setup Done!");
+    setColor(0, 10, 0); // Color green
     
-    sprintf(commandtopic, "%s%s", basetopic, "/Light/#");
+    sprintf(commandtopic, "%s%s%s", basetopic, lightTopic, "#");
     mqttClient.subscribe(commandtopic);  
     Serial.print("Subscribing to topic: ");
     Serial.println(commandtopic);
-    sprintf(commandtopic, "%s%s", basetopic, "/Lgroup/#");
+    sprintf(commandtopic, "%s%s%s", basetopic, lightGroup, "#");
     mqttClient.subscribe(commandtopic);  
     Serial.print("Subscribing to topic: ");
     Serial.println(commandtopic);
-    sprintf(commandtopic, "%s%s", basetopic, "/Curtain/#");
+    sprintf(commandtopic, "%s%s%s", basetopic, rollerblindTopic, "#");
     mqttClient.subscribe(commandtopic);  
     Serial.print("Subscribing to topic: ");
     Serial.println(commandtopic);
-    sprintf(commandtopic, "%s%s", basetopic, "/Cgroup/#");
+    sprintf(commandtopic, "%s%s%s", basetopic, rollerblindGroup, "#");
     mqttClient.subscribe(commandtopic);  
     Serial.print("Subscribing to topic: ");
     Serial.println(commandtopic);
-    sprintf(commandtopic, "%s%s", basetopic, "/Command/#");
+    sprintf(commandtopic, "%s%s%s", basetopic, controlTopic, "#");
     mqttClient.subscribe(commandtopic);  
     Serial.print("Subscribing to topic: ");
     Serial.println(commandtopic);
+    mqttClient.subscribe(openhabTopic);  
+    Serial.print("Subscribing to topic: ");
+    Serial.println(openhabTopic);
     
 }
 
+// ##################################################
+// ##                 mqttRun                      ##
+// ##################################################
 void mqttRun()
 {
   if (!mqttClient.loop()) 
@@ -63,12 +70,14 @@ void mqttRun()
       Serial.println("MQTT Client disconnected...");
       if (mqttClient.connect(MQTTName))
       {
+        setColor(0, 10, 0); // Color green
         Serial.println("MQTT reconnected");
         MQTTinit();
       } 
     
       else 
       {
+        setColor(10, 0, 0); // Color red
         Serial.println("MQTT failed !!");
         Serial.print("retry in ");
         Serial.print(MQTTDisconnect);
@@ -92,21 +101,13 @@ void callback(char* topic, byte* payload, unsigned int length) {
   memcpy(json, payload, length);
   json[length] = '\0';  
   String MyTopic = topic;
-
-  //Serial.println("Callback");
-
-//  int i;
-//  for (i=0;i<6;i++)
-//  {
-//    mac[i]=EEPROM.read(i);
-//  }  
-
   String TmpStr;
 
   // Controller Setup / paging functionality
   sprintf(buff, "%s%02X%02X%02X%02X%02X%02X", basevector, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
   TmpStr = buff;
   if(MyTopic.substring(0,TmpStr.length()) == TmpStr) {
+    standalone = false;
     if (payload[4]==84) {
       for (int i=0; i<30; i++) basetopic[i] = payload[i+10]; // base topic (T)
     }
@@ -154,6 +155,18 @@ void callback(char* topic, byte* payload, unsigned int length) {
     StatusTopic = MyTopic.substring(TmpStr.length()+1) + json;
     statusSet = true;
   }  
+  
+   // openhab time topic
+  TmpStr = openhabTopic;
+  if(MyTopic.substring(0,TmpStr.length()) == TmpStr) {
+    openhabTimeElapsed = 0;
+    setColor(20,0,0);
+    String value = String((char*)payload);
+    Serial.print("Openhab time  : ");
+    Serial.println(json);
+    Serial.println("");
+    standalone = false;
+  }
   
  free(json);
 }

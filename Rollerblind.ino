@@ -144,18 +144,18 @@ void Processblinds()
     Serial.println(action);
         
     if      (action == "UP")    steppers[StepperID]->moveTo(0);                                // Move to Top Position
-    else if (action == "DOWN")  steppers[StepperID]->moveTo(end_point[StepperID]);              // Move to Bottom Position
+    else if (action == "DOWN")  steppers[StepperID]->moveTo(end_point[StepperID]);             // Move to Bottom Position
     else if (action == "STAR")  steppers[StepperID]->setCurrentPosition(0);                    // Set current position as Top Position
-    else if (action == "END")   
+    else if (action == "END")                                                                  // Set current position as Bottom Position
     {
       Serial.print("New end_point = ");
       Serial.print(steppers[StepperID]->currentPosition());
       Serial.print(" For curtain:");
       Serial.println(StepperID + 1);
-      end_point[StepperID] = steppers[StepperID]->currentPosition();                              // Set current position as Bottom Position
+      end_point[StepperID] = steppers[StepperID]->currentPosition();                            
       EEPROMWritelong((StepperID * 4) + BlindsOffset,end_point[StepperID]);                     // Save the new Bottom position
     }  
-    else if (action == "MOVE")  
+    else if (action == "MOVE")                                                                  // Move to set position
     {
       long newEndPoint = blindsTopic.substring(7).toInt();
       long CurrentPosition = steppers[StepperID]->currentPosition();
@@ -169,8 +169,11 @@ void Processblinds()
   blinds = false;
 }
 
-//This function will write a 4 byte (32bit) long to the eeprom at
-//the specified address to address + 3.
+// *********************************************************
+// EEPROMWritelong
+// This function will write a 4 byte (32bit) long to the eeprom at
+// the specified address to address + 3.
+// *********************************************************
 void EEPROMWritelong(int address, long value)
 {
   //Decomposition from a long to 4 bytes by using bitshift.
@@ -187,6 +190,11 @@ void EEPROMWritelong(int address, long value)
   EEPROM.write(address + 3, one);
 }
       
+// *********************************************************
+// EEPROMReadlong
+// This function will read a 4 byte (32bit) long from the eeprom at
+// the specified address to address + 3.
+// *********************************************************
 long EEPROMReadlong(int address)
 {
   //Read the 4 bytes from the eeprom memory.

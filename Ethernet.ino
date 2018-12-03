@@ -1,23 +1,20 @@
-void ethernetInit()
+void etherInit()
 {
-
   byte i;
-  byte dsAddress[8];
-  Serial.begin(38400);
-  Serial.println("Starting Arduino");
-
+  uint8_t dsAddress[8];
+  
   Serial.println( "Searching for DS18B20..." );
   ds.reset_search();  // Start the search with the first device
   if( !ds.search(dsAddress) )
   {
-    Serial.println( "none found. Using default MAC address." );
+    Serial.println( "none found. Reading MAC address from EEPROM." );
     ReadMac();
   } else {
     Serial.println( "success. Setting MAC address:" );
     Serial.print( " DS18B20 ROM  =" );
     for( i = 0; i < 8; i++)
     {
-      Serial.write(' ');
+      Serial.write(':');
       Serial.print( dsAddress[i], HEX );
     }
     Serial.println();
@@ -35,8 +32,7 @@ void ethernetInit()
   
   Serial.println();
     Serial.println("Starting Ethernet..");
-//  WriteMac();
-  //ReadMac();
+    //WriteMac();
   // Retrieve IP address via DHCP
   if (Ethernet.begin(mac) == 0) {
     // no point in carrying on, so do nothing forevermore:
@@ -44,28 +40,20 @@ void ethernetInit()
     for(;;)
       ;
   }
-    // print your local IP address:
-  Serial.print("My IP address: ");
-  for (byte thisByte = 0; thisByte < 4; thisByte++) {
-    // print the value of each byte of the IP address:
-    Serial.print(Ethernet.localIP()[thisByte], DEC);
-    Serial.print(".");
-  }
-  Serial.println();
-    
+
+  Serial.print(" My IP address : ");
+  Serial.println(Ethernet.localIP());  
   // Retrieve MQTT broker IP Address (DHCP option 151)  
   IPAddress mqttBroker(Ethernet.mqttBrokerIP());
   
-
-  Serial.print("My MQTT broker: ");
-  for (byte thisByte = 0; thisByte < 4; thisByte++) {
-     //print the value of each byte of the IP address:
-    Serial.print(Ethernet.mqttBrokerIP()[thisByte], DEC);
-    Serial.print(".");
-  }
+  Serial.print(" My MQTT broker: ");
+  Serial.println(Ethernet.mqttBrokerIP());  
   Serial.println();
 }
 
+// *********************************************************
+// PrintMac: Print the mac address
+// *********************************************************
 void PrintMac()
 {
   Serial.print( " Ethernet MAC =" );
@@ -75,15 +63,20 @@ void PrintMac()
     Serial.print( mac[i], HEX );
   }
   Serial.println();
-
 }
 
+// *********************************************************
+// WriteMac: Write mac address to EEPROM
+// *********************************************************
 void WriteMac()  
 {
   for (int i=0;i<6;i++)
     EEPROM.write(i, writemac[i]);
 }
 
+// *********************************************************
+// ReadMac: Read mac address from EEPROM
+// *********************************************************
 void ReadMac()
 {
   // Retrieve mac address from eeprom 
